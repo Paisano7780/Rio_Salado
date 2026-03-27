@@ -4,15 +4,11 @@
 numpy>=1.24
 scipy>=1.11
 
-# Computer vision (with CUDA on Manifold 3; standard build for CI)
-opencv-python>=4.8
-
-# ROS 2 Python client library
-rclpy>=3.3
+# Computer vision (headless build for server/container environments)
+opencv-python-headless>=4.8
 
 # Configuration
 pyyaml>=6.0
 
 # Testing
 pytest>=7.4
-pytest-cov>=4.1

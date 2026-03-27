@@ -46,26 +46,20 @@ RUN curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key \
     && rm -rf /var/lib/apt/lists/*
 
 # ---------------------------------------------------------------------------
-# OpenCV with CUDA (pre-built wheel for Jetson / L4T)
-# ---------------------------------------------------------------------------
-RUN pip3 install --no-cache-dir \
-    "opencv-python>=4.8"
-
-# ---------------------------------------------------------------------------
 # Python scientific stack and project dependencies
 # ---------------------------------------------------------------------------
-COPY requirements.txt /workspace/requirements.txt
-RUN pip3 install --no-cache-dir -r /workspace/requirements.txt
+COPY requirements.txt /tmp/requirements.txt
+RUN pip3 install --no-cache-dir -r /tmp/requirements.txt
 
 # ---------------------------------------------------------------------------
 # Application source
 # ---------------------------------------------------------------------------
-WORKDIR /workspace
-COPY src/ /workspace/src/
-COPY tests/ /workspace/tests/
+WORKDIR /ros2_ws/src/rio_salado
+COPY src/ /ros2_ws/src/rio_salado/src/
+COPY tests/ /ros2_ws/src/rio_salado/tests/
 
 # Ensure the src package is importable
-ENV PYTHONPATH="/workspace/src:${PYTHONPATH}"
+ENV PYTHONPATH="/ros2_ws/src/rio_salado/src:${PYTHONPATH}"
 
 # ---------------------------------------------------------------------------
 # ROS 2 environment
@@ -74,6 +68,6 @@ SHELL ["/bin/bash", "-c"]
 RUN echo "source /opt/ros/foxy/setup.bash" >> /root/.bashrc
 
 # ---------------------------------------------------------------------------
-# Default command — run the HydroFlowPilot node
+# Default command — run unit tests
 # ---------------------------------------------------------------------------
-CMD ["bash", "-c", "source /opt/ros/foxy/setup.bash && python3 /workspace/src/main.py"]
+CMD ["pytest", "/ros2_ws/src/rio_salado/tests/unit/test_hydro_logic.py", "--tb=short", "-v"]
