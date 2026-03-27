@@ -1,0 +1,17 @@
+# Python bytecode
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Pytest
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Docker build artefacts
+*.tar
+
+# Editor directories
+.idea/
+.vscode/
+*.swp
