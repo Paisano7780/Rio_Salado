@@ -1,0 +1,20 @@
+# AI-HydroFlow Salado — Python dependencies
+# Compatible with Python 3.8+ (DJI Manifold 3 / JetPack 5.1 runtime)
+
+# ROS 2 Python client library
+rclpy
+
+# Numerical computing
+numpy>=1.21.0
+
+# Scientific computing (Gaussian filter, gradient utilities)
+scipy>=1.7.0
+
+# Computer vision (thermal image processing, water mask segmentation)
+opencv-python>=4.5.0
+
+# Configuration file parsing (YAML-based ROS 2 parameter files)
+pyyaml>=5.4.0
+
+# Testing framework
+pytest>=7.0.0

@@ -1,0 +1,146 @@
+# =============================================================================
+# AI-HydroFlow Salado — CI/CD Pipeline for DJI Manifold 3 (ARM64)
+# =============================================================================
+# Workflow steps:
+#   1. Emulate ARM64 architecture via QEMU.
+#   2. Build the Docker image targeting the Manifold 3 runtime.
+#   3. Run unit tests inside the container to validate:
+#        - Gaussian filter shape, range, and smoothing behaviour.
+#        - Flow-vector unit-length normalisation.
+#        - RTK node selection correctness.
+# =============================================================================
+
+name: CI/CD — Manifold 3 ARM64
+
+on:
+  push:
+    branches: ["main", "develop"]
+    paths:
+      - "dji-salado-hydroflow/**"
+      - ".github/workflows/ci_cd_manifold.yml"
+  pull_request:
+    branches: ["main", "develop"]
+    paths:
+      - "dji-salado-hydroflow/**"
+      - ".github/workflows/ci_cd_manifold.yml"
+  workflow_dispatch: {}
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository_owner }}/dji-salado-hydroflow
+
+defaults:
+  run:
+    working-directory: dji-salado-hydroflow
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Job 1: Lint & static analysis (runs on native x86-64 for speed)
+  # ---------------------------------------------------------------------------
+  lint:
+    name: Lint (Python)
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install linting tools
+        run: pip install flake8 pylint
+
+      - name: Run flake8
+        run: flake8 src/ tests/ --max-line-length=100 --extend-ignore=E203,W503
+
+  # ---------------------------------------------------------------------------
+  # Job 2: Unit tests on native x86-64 (fast feedback loop)
+  # ---------------------------------------------------------------------------
+  unit-tests-native:
+    name: Unit Tests (x86-64)
+    runs-on: ubuntu-22.04
+    needs: lint
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install Python dependencies
+        run: pip install numpy scipy pytest
+
+      - name: Run unit tests
+        run: pytest tests/unit -v --tb=short
+
+  # ---------------------------------------------------------------------------
+  # Job 3: ARM64 Docker build + tests (validates Manifold 3 compatibility)
+  # ---------------------------------------------------------------------------
+  build-and-test-arm64:
+    name: Build & Test (ARM64 / Manifold 3)
+    runs-on: ubuntu-22.04
+    needs: unit-tests-native
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ---- QEMU: emulate ARM64 architecture ---------------------------------
+      - name: Set up QEMU for ARM64 emulation
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: linux/arm64
+
+      # ---- Docker Buildx: multi-arch build support --------------------------
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          platforms: linux/arm64
+
+      # ---- Build image (ARM64 target) ----------------------------------------
+      - name: Build Docker image for ARM64
+        uses: docker/build-push-action@v5
+        with:
+          context: dji-salado-hydroflow
+          file: dji-salado-hydroflow/docker/Dockerfile
+          platforms: linux/arm64
+          push: false
+          load: true
+          tags: ${{ env.IMAGE_NAME }}:ci-${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # ---- Run unit tests inside the ARM64 container -----------------------
+      - name: Run pytest inside ARM64 container
+        run: |
+          docker run --rm \
+            --platform linux/arm64 \
+            -e PYTHONPATH=/opt/hydroflow/src \
+            ${{ env.IMAGE_NAME }}:ci-${{ github.sha }} \
+            bash -c "pytest /opt/hydroflow/tests/unit -v --tb=short"
+
+      # ---- Optional: push to GitHub Container Registry on main branch ------
+      - name: Log in to GitHub Container Registry
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push image to GHCR (main branch only)
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        uses: docker/build-push-action@v5
+        with:
+          context: dji-salado-hydroflow
+          file: dji-salado-hydroflow/docker/Dockerfile
+          platforms: linux/arm64
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
