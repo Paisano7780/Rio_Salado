@@ -1,0 +1,115 @@
+# .github/workflows/ci_cd_manifold.yml
+#
+# CI/CD pipeline for AI-HydroFlow Salado
+# Emulates ARM64 (DJI Manifold 3) via QEMU, builds the Docker image,
+# and runs the pytest unit-test suite to validate core algorithms.
+
+name: CI/CD — Manifold 3 ARM64
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  # --------------------------------------------------------------------------
+  # Job 1: Run unit tests on the host runner (fast feedback, no ARM emulation)
+  # --------------------------------------------------------------------------
+  unit-tests:
+    name: Unit Tests (x86-64)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install scientific dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install numpy scipy pytest
+
+      - name: Run pytest — hydro_logic unit tests
+        working-directory: dji-salado-hydroflow
+        run: |
+          PYTHONPATH=src pytest tests/unit/test_hydro_logic.py \
+            --tb=short \
+            -v
+
+  # --------------------------------------------------------------------------
+  # Job 2: Build ARM64 Docker image via QEMU emulation
+  # --------------------------------------------------------------------------
+  build-arm64-image:
+    name: Build ARM64 Docker Image
+    runs-on: ubuntu-latest
+    needs: unit-tests
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU (ARM64 emulation)
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build ARM64 image
+        uses: docker/build-push-action@v5
+        with:
+          context: dji-salado-hydroflow
+          file: dji-salado-hydroflow/docker/Dockerfile
+          platforms: linux/arm64
+          push: false
+          tags: ai-hydroflow-salado:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # --------------------------------------------------------------------------
+  # Job 3: Run pytest inside the ARM64 container (integration validation)
+  # --------------------------------------------------------------------------
+  integration-tests-arm64:
+    name: Integration Tests (ARM64 via QEMU)
+    runs-on: ubuntu-latest
+    needs: build-arm64-image
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU (ARM64 emulation)
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build ARM64 image (for test execution)
+        uses: docker/build-push-action@v5
+        with:
+          context: dji-salado-hydroflow
+          file: dji-salado-hydroflow/docker/Dockerfile
+          platforms: linux/arm64
+          push: false
+          tags: ai-hydroflow-salado:test
+          load: true
+          cache-from: type=gha
+
+      - name: Run pytest inside ARM64 container
+        run: |
+          docker run --rm \
+            --platform linux/arm64 \
+            ai-hydroflow-salado:test \
+            pytest /ros2_ws/src/rio_salado/tests/unit/test_hydro_logic.py --tb=short -v
