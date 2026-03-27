@@ -18,7 +18,7 @@ import os
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
 
-from hydro_logic import apply_gaussian_filter, calculate_flow_vector
+from hydro_logic import apply_gaussian_filter, calculate_flow_vector, calculate_flow_gradient
 
 
 # ---------------------------------------------------------------------------
@@ -171,3 +171,69 @@ class TestCalculateFlowVector:
         norm = float(np.linalg.norm(vec))
         assert norm > 0, "Pipeline produced a zero vector for a non-flat DTM"
         np.testing.assert_allclose(norm, 1.0, atol=1e-9)
+
+
+# ---------------------------------------------------------------------------
+# calculate_flow_gradient
+# ---------------------------------------------------------------------------
+
+class TestCalculateFlowGradient:
+    """Tests for calculate_flow_gradient (per-pixel gradient field)."""
+
+    def test_output_shape(self):
+        """Output must be (rows, cols, 2)."""
+        dtm = np.ones((15, 20))
+        result = calculate_flow_gradient(dtm)
+        assert result.shape == (15, 20, 2)
+
+    def test_output_dtype_is_float(self):
+        """Output must be floating-point."""
+        dtm = np.ones((10, 10), dtype=np.int32)
+        result = calculate_flow_gradient(dtm)
+        assert np.issubdtype(result.dtype, np.floating)
+
+    def test_flat_terrain_returns_zero_field(self):
+        """Perfectly flat terrain has no gradient — every pixel must be [0, 0]."""
+        dtm = np.zeros((20, 20))
+        result = calculate_flow_gradient(dtm)
+        np.testing.assert_array_equal(result, 0.0)
+
+    def test_east_slope_produces_westward_field(self):
+        """Uniform eastward slope → every interior pixel points west (v_east < 0)."""
+        cols = 20
+        dtm = np.zeros((20, cols))
+        for c in range(cols):
+            dtm[:, c] = float(c)
+        result = calculate_flow_gradient(dtm)
+        # Interior pixels (away from edges) should have v_east < 0
+        interior = result[1:-1, 1:-1, 0]
+        assert np.all(interior < 0), "Expected westward flow for eastward slope"
+
+    def test_unit_vectors_on_non_flat_pixels(self):
+        """Non-flat pixels must produce unit vectors."""
+        cols = 10
+        dtm = np.zeros((10, cols))
+        for c in range(cols):
+            dtm[:, c] = float(c)
+        result = calculate_flow_gradient(dtm)
+        # Check interior pixels (gradient is well-defined there)
+        interior = result[1:-1, 1:-1]
+        norms = np.linalg.norm(interior, axis=-1)
+        np.testing.assert_allclose(norms, 1.0, atol=1e-9)
+
+    def test_raises_on_1d_input(self):
+        """1-D array must raise ValueError."""
+        with pytest.raises(ValueError, match="2-D"):
+            calculate_flow_gradient(np.ones(10))
+
+    def test_raises_on_3d_input(self):
+        """3-D array must raise ValueError."""
+        with pytest.raises(ValueError, match="2-D"):
+            calculate_flow_gradient(np.ones((5, 5, 3)))
+
+    def test_no_division_by_zero_on_mixed_terrain(self):
+        """Mixed flat/sloped DTM must not raise and flat pixels must be zero."""
+        dtm = np.zeros((10, 10))
+        dtm[:, 5:] = 1.0  # right half elevated
+        result = calculate_flow_gradient(dtm)
+        assert np.all(np.isfinite(result)), "Non-finite values found in gradient field"

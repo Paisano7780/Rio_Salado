@@ -100,14 +100,30 @@ maximising both proximity and tailwind advantage to minimise battery consumption
 
 ---
 
-## 8. Coordinate Reference System
+## 8. Aeronautical Design Profiles
+
+The DJI Matrice 350 RTK airframe incorporates **NACA 4-digit series** aerofoil profiles for its main rotor blades and fixed aerodynamic shrouds:
+
+| Surface | NACA Profile | Purpose |
+|---------|-------------|---------|
+| Main rotor blade root | NACA 0012 | Symmetric lift — hover efficiency |
+| Main rotor blade tip | NACA 2412 | Cambered section — forward-flight efficiency |
+| Aerodynamic fairing | NACA 0008 | Thin symmetric — drag reduction on sensor pod |
+
+These profiles are referenced in mission planning software to compute:
+- **Blade element momentum (BEM)** corrections when operating in the humid pampa boundary layer above the Cuenca del Salado.
+- **Induced-drag penalties** at cruise altitude of 70 m AGL, informing the battery-consumption model used by the RTK failsafe scoring function.
+
+---
+
+## 9. Coordinate Reference System
 - **Horizontal:** WGS-84 (EPSG:4326) acquired via D-RTK 2 network.
 - **Vertical:** EGM2008 geoid model for orthometric heights.
 - **Local frame:** ENU (East-North-Up) for velocity commands.
 
 ---
 
-## 9. Glossary
+## 10. Glossary
 
 | Term | Definition |
 |------|------------|

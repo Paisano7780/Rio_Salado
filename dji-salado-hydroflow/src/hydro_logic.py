@@ -124,3 +124,62 @@ def calculate_flow_vector(
     v_east = mean_col / magnitude
     v_north = -mean_row / magnitude  # negate: row↓ = south ↔ north component negative
     return np.array([v_east, v_north])
+
+
+def calculate_flow_gradient(
+    smoothed_dtm: NDArray[np.floating],
+) -> NDArray[np.floating]:
+    """Compute the per-pixel normalised flow-direction gradient field from a DTM.
+
+    Uses :func:`numpy.gradient` to estimate ∇z at every pixel, then negates
+    and normalises each local vector so it points downhill with unit length.
+    Pixels where the gradient magnitude is below the numerical threshold
+    (perfectly flat neighbourhood) are assigned ``[0.0, 0.0]`` to prevent
+    division-by-zero.
+
+    Parameters
+    ----------
+    smoothed_dtm:
+        2-D array of smoothed elevation values (metres), typically the output
+        of :func:`apply_gaussian_filter`.
+
+    Returns
+    -------
+    NDArray[np.floating]
+        3-D array of shape ``(rows, cols, 2)`` where ``result[r, c, 0]`` is
+        the East component and ``result[r, c, 1]`` is the North component of
+        the unit flow-direction vector at pixel ``(r, c)``.
+
+    Raises
+    ------
+    ValueError
+        If *smoothed_dtm* is not exactly 2-D.
+    """
+    smoothed_dtm = np.asarray(smoothed_dtm, dtype=float)
+    if smoothed_dtm.ndim != 2:
+        raise ValueError(
+            f"smoothed_dtm must be 2-D, got shape {smoothed_dtm.shape}"
+        )
+
+    # np.gradient returns [grad_row (axis-0), grad_col (axis-1)]
+    grad_row, grad_col = np.gradient(smoothed_dtm)
+
+    # Flow is downhill → negate gradient components
+    flow_col = -grad_col   # East component (column axis)
+    flow_row = -grad_row   # Row component  (row axis, positive = south)
+
+    magnitude = np.sqrt(flow_col ** 2 + flow_row ** 2)
+
+    # Prevent division by zero: replace zero magnitudes with 1.0 temporarily
+    safe_mag = np.where(magnitude < 1e-9, 1.0, magnitude)
+
+    v_east = flow_col / safe_mag
+    # Negate row component: increasing row index = south, so negate for North
+    v_north = -flow_row / safe_mag
+
+    # Zero out pixels that were flat (magnitude below threshold)
+    flat = magnitude < 1e-9
+    v_east = np.where(flat, 0.0, v_east)
+    v_north = np.where(flat, 0.0, v_north)
+
+    return np.stack([v_east, v_north], axis=-1)
